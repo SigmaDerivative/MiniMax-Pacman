@@ -4,7 +4,7 @@
 # educational purposes provided that (1) you do not distribute or publish
 # solutions, (2) you retain this notice, and (3) you provide clear
 # attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
-# 
+#
 # Attribution Information: The Pacman AI projects were developed at UC Berkeley.
 # The core projects and autograders were primarily created by John DeNero
 # (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
@@ -14,9 +14,12 @@
 
 from util import manhattanDistance
 from game import Directions
-import random, util
+import random, util, time
 
 from game import Agent
+
+import numpy as np
+
 
 class ReflexAgent(Agent):
     """
@@ -27,7 +30,6 @@ class ReflexAgent(Agent):
     it in any way you see fit, so long as you don't touch our method
     headers.
     """
-
 
     def getAction(self, gameState):
         """
@@ -44,8 +46,10 @@ class ReflexAgent(Agent):
         # Choose one of the best actions
         scores = [self.evaluationFunction(gameState, action) for action in legalMoves]
         bestScore = max(scores)
-        bestIndices = [index for index in range(len(scores)) if scores[index] == bestScore]
-        chosenIndex = random.choice(bestIndices) # Pick randomly among the best
+        bestIndices = [
+            index for index in range(len(scores)) if scores[index] == bestScore
+        ]
+        chosenIndex = random.choice(bestIndices)  # Pick randomly among the best
 
         "Add more of your code here if you want to"
 
@@ -76,6 +80,7 @@ class ReflexAgent(Agent):
         "*** YOUR CODE HERE ***"
         return successorGameState.getScore()
 
+
 def scoreEvaluationFunction(currentGameState):
     """
     This default evaluation function just returns the score of the state.
@@ -85,6 +90,7 @@ def scoreEvaluationFunction(currentGameState):
     (not reflex agents).
     """
     return currentGameState.getScore()
+
 
 class MultiAgentSearchAgent(Agent):
     """
@@ -101,10 +107,11 @@ class MultiAgentSearchAgent(Agent):
     is another abstract class.
     """
 
-    def __init__(self, evalFn = 'scoreEvaluationFunction', depth = '2'):
-        self.index = 0 # Pacman is always agent index 0
+    def __init__(self, evalFn="scoreEvaluationFunction", depth="2"):
+        self.index = 0  # Pacman is always agent index 0
         self.evaluationFunction = util.lookup(evalFn, globals())
         self.depth = int(depth)
+
 
 class MinimaxAgent(MultiAgentSearchAgent):
     """
@@ -135,7 +142,111 @@ class MinimaxAgent(MultiAgentSearchAgent):
         Returns whether or not the game state is a losing state
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+
+        num_ghosts = gameState.getNumAgents() - 1
+
+        def random_x_index(array: list, x):
+            """Returns random index of max/min in a list"""
+            mx = x(array)
+            indices = []
+            for idx, val in enumerate(array):
+                if val == mx:
+                    indices.append(idx)
+            return random.choice(indices)
+
+        def minimax_tree(self, game, pacman: bool, depth: int):
+            if depth == 1:
+                if pacman is False:
+                    values = []
+                    for i in range(num_ghosts):
+                        # for every ghost, check the value of the terminal state upon their move
+                        legal_actions = game.getLegalActions(i + 1)
+                        for action in legal_actions:
+                            values.append(
+                                self.evaluationFunction(
+                                    game.generateSuccessor(i + 1, action)
+                                )
+                            )
+                    return values
+            if pacman is False:
+                values = []
+                for i in range(num_ghosts):
+                    # for every ghost get the minimax_tree of every pacman action in depth - 1
+                    legal_actions = game.getLegalActions(i + 1)
+                    for action in legal_actions:
+                        next_game = game.generateSuccessor(i + 1, action)
+                        if next_game.isLose():
+                            # except when it results in losing as the pacman cannot move in the next state
+                            values.append([next_game.getScore()])
+                            continue
+                        values.append(
+                            minimax_tree(
+                                self,
+                                game=next_game,
+                                pacman=True,
+                                depth=depth - 1,
+                            )
+                        )
+                return values
+            else:
+                values = []
+                legal_actions = game.getLegalActions(0)
+                for action in legal_actions:
+                    # for every pacman legal action get the minimax_tree of every ghost action in the same turn
+                    next_game = game.generateSuccessor(0, action)
+                    if next_game.isLose() or next_game.isWin():
+                        # except when the game is winning or losing as the ghost does not move when the game is finished
+                        values.append([next_game.getScore()])
+                        continue
+                    values.append(
+                        minimax_tree(
+                            self,
+                            game=next_game,
+                            pacman=False,
+                            depth=depth,
+                        )
+                    )
+                return values
+
+        minimax = minimax_tree(self, game=gameState, pacman=True, depth=self.depth)
+        print(f"minimax {minimax}")
+
+        def minimax_collapse(minimax, pacman, depth):
+            """returns the 'collapsed' minimax tree"""
+            if depth == 1:
+                pacman_move_values = []
+                for ghost_moves in minimax:
+                    pacman_move_values.append(min(ghost_moves))
+                return pacman_move_values
+            elif pacman:
+                ghost_move_values = []
+                for pacman_moves in minimax:
+                    ghost_move_values.append(
+                        max(
+                            minimax_collapse(
+                                pacman_moves, pacman=False, depth=depth - 1
+                            )
+                        )
+                    )
+                return ghost_move_values
+            else:
+                pacman_move_values = []
+                for ghost_moves in minimax:
+                    pacman_move_values.append(
+                        min(minimax_collapse(ghost_moves, pacman=True, depth=depth))
+                    )
+                return pacman_move_values
+
+        collapsed_minimax = minimax_collapse(
+            minimax=minimax, pacman=True, depth=self.depth
+        )
+        print(f"collapsed {collapsed_minimax}")
+
+        # pacman
+        legal_actions = gameState.getLegalActions(0)
+        # time.sleep(0.1)
+        return legal_actions[random_x_index(collapsed_minimax, max)]
+
 
 class AlphaBetaAgent(MultiAgentSearchAgent):
     """
@@ -149,9 +260,10 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
         "*** YOUR CODE HERE ***"
         util.raiseNotDefined()
 
+
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
-      Your expectimax agent (question 4)
+    Your expectimax agent (question 4)
     """
 
     def getAction(self, gameState):
@@ -164,6 +276,7 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
         "*** YOUR CODE HERE ***"
         util.raiseNotDefined()
 
+
 def betterEvaluationFunction(currentGameState):
     """
     Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
@@ -173,6 +286,7 @@ def betterEvaluationFunction(currentGameState):
     """
     "*** YOUR CODE HERE ***"
     util.raiseNotDefined()
+
 
 # Abbreviation
 better = betterEvaluationFunction
