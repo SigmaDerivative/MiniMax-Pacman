@@ -145,6 +145,11 @@ class MinimaxAgent(MultiAgentSearchAgent):
 
         num_ghosts = gameState.getNumAgents() - 1
 
+        def how_deep(list_of_lists):
+            if not isinstance(list_of_lists, list):
+                return 0
+            return max(map(how_deep, list_of_lists), default=0) + 1
+
         def random_x_index(array: list, x):
             """Returns random index of max/min in a list"""
             mx = x(array)
@@ -154,7 +159,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
                     indices.append(idx)
             return random.choice(indices)
 
-        def minimax_tree(self, game, pacman: bool, depth: int):
+        def minimax(self, game, pacman: bool, depth: int):
             if depth == 1:
                 if pacman is False:
                     values = []
@@ -167,7 +172,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
                                     game.generateSuccessor(i + 1, action)
                                 )
                             )
-                    return values
+                    return min(values)
             if pacman is False:
                 values = []
                 for i in range(num_ghosts):
@@ -180,18 +185,21 @@ class MinimaxAgent(MultiAgentSearchAgent):
                             values.append([next_game.getScore()])
                             continue
                         values.append(
-                            minimax_tree(
+                            minimax(
                                 self,
                                 game=next_game,
                                 pacman=True,
                                 depth=depth - 1,
                             )
                         )
-                return values
+                for idx, val in enumerate(values):
+                    if isinstance(val, list):
+                        values[idx] = min(val)
+                return min(values)
             else:
                 values = []
                 legal_actions = game.getLegalActions(0)
-                for action in legal_actions:
+                for idx, action in enumerate(legal_actions):
                     # for every pacman legal action get the minimax_tree of every ghost action in the same turn
                     next_game = game.generateSuccessor(0, action)
                     if next_game.isLose() or next_game.isWin():
@@ -199,53 +207,28 @@ class MinimaxAgent(MultiAgentSearchAgent):
                         values.append([next_game.getScore()])
                         continue
                     values.append(
-                        minimax_tree(
+                        minimax(
                             self,
                             game=next_game,
                             pacman=False,
                             depth=depth,
                         )
                     )
-                return values
+                for idx, val in enumerate(values):
+                    if isinstance(val, list):
+                        values[idx] = min(val)
+                if depth == self.depth:
+                    return values
+                else:
+                    return max(values)
 
-        minimax = minimax_tree(self, game=gameState, pacman=True, depth=self.depth)
+        minimax = minimax(self, game=gameState, pacman=True, depth=self.depth)
         print(f"minimax {minimax}")
-
-        def minimax_collapse(minimax, pacman, depth):
-            """returns the 'collapsed' minimax tree"""
-            if depth == 1:
-                pacman_move_values = []
-                for ghost_moves in minimax:
-                    pacman_move_values.append(min(ghost_moves))
-                return pacman_move_values
-            elif pacman:
-                ghost_move_values = []
-                for pacman_moves in minimax:
-                    ghost_move_values.append(
-                        max(
-                            minimax_collapse(
-                                pacman_moves, pacman=False, depth=depth - 1
-                            )
-                        )
-                    )
-                return ghost_move_values
-            else:
-                pacman_move_values = []
-                for ghost_moves in minimax:
-                    pacman_move_values.append(
-                        min(minimax_collapse(ghost_moves, pacman=True, depth=depth))
-                    )
-                return pacman_move_values
-
-        collapsed_minimax = minimax_collapse(
-            minimax=minimax, pacman=True, depth=self.depth
-        )
-        print(f"collapsed {collapsed_minimax}")
 
         # pacman
         legal_actions = gameState.getLegalActions(0)
-        # time.sleep(0.1)
-        return legal_actions[random_x_index(collapsed_minimax, max)]
+        # return legal_actions[50]
+        return legal_actions[random_x_index(minimax, max)]
 
 
 class AlphaBetaAgent(MultiAgentSearchAgent):
