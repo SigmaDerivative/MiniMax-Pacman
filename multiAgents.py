@@ -12,13 +12,12 @@
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
 
+from os import terminal_size
 from util import manhattanDistance
 from game import Directions
 import random, util, time
 
 from game import Agent
-
-import numpy as np
 
 
 class ReflexAgent(Agent):
@@ -143,92 +142,61 @@ class MinimaxAgent(MultiAgentSearchAgent):
         """
         "*** YOUR CODE HERE ***"
 
-        num_ghosts = gameState.getNumAgents() - 1
+        value_and_action = self.minimax(game=gameState, depth=0)
+        # print(f"minimax {value_and_action}")
+        return value_and_action[1]
 
-        def how_deep(list_of_lists):
-            if not isinstance(list_of_lists, list):
-                return 0
-            return max(map(how_deep, list_of_lists), default=0) + 1
+    def minimax(self, game, depth: int):
+        """Main minimax search function, returns value and action"""
+        # Using depth to iterate through all agents. Each actual depth is // num_agents
+        terminal_state = depth == self.depth * game.getNumAgents()
 
-        def random_x_index(array: list, x):
-            """Returns random index of max/min in a list"""
-            mx = x(array)
-            indices = []
-            for idx, val in enumerate(array):
-                if val == mx:
-                    indices.append(idx)
-            return random.choice(indices)
+        # Returns on terminated game to avoid asking for games without legal moves
+        if game.isLose() or game.isWin() or terminal_state:
+            return [self.evaluationFunction(game), None]
 
-        def minimax(self, game, pacman: bool, depth: int):
-            if depth == 1:
-                if pacman is False:
-                    values = []
-                    for i in range(num_ghosts):
-                        # for every ghost, check the value of the terminal state upon their move
-                        legal_actions = game.getLegalActions(i + 1)
-                        for action in legal_actions:
-                            values.append(
-                                self.evaluationFunction(
-                                    game.generateSuccessor(i + 1, action)
-                                )
-                            )
-                    return min(values)
-            if pacman is False:
-                values = []
-                for i in range(num_ghosts):
-                    # for every ghost get the minimax_tree of every pacman action in depth - 1
-                    legal_actions = game.getLegalActions(i + 1)
-                    for action in legal_actions:
-                        next_game = game.generateSuccessor(i + 1, action)
-                        if next_game.isLose():
-                            # except when it results in losing as the pacman cannot move in the next state
-                            values.append([next_game.getScore()])
-                            continue
-                        values.append(
-                            minimax(
-                                self,
-                                game=next_game,
-                                pacman=True,
-                                depth=depth - 1,
-                            )
-                        )
-                for idx, val in enumerate(values):
-                    if isinstance(val, list):
-                        values[idx] = min(val)
-                return min(values)
-            else:
-                values = []
-                legal_actions = game.getLegalActions(0)
-                for idx, action in enumerate(legal_actions):
-                    # for every pacman legal action get the minimax_tree of every ghost action in the same turn
-                    next_game = game.generateSuccessor(0, action)
-                    if next_game.isLose() or next_game.isWin():
-                        # except when the game is winning or losing as the ghost does not move when the game is finished
-                        values.append([next_game.getScore()])
-                        continue
-                    values.append(
-                        minimax(
-                            self,
-                            game=next_game,
-                            pacman=False,
-                            depth=depth,
-                        )
-                    )
-                for idx, val in enumerate(values):
-                    if isinstance(val, list):
-                        values[idx] = min(val)
-                if depth == self.depth:
-                    return values
-                else:
-                    return max(values)
+        # Get agent id based on depth
+        agent_id = depth % game.getNumAgents()
+        if agent_id == 0:
+            # Pacman is 0
+            return self.maximizer(game=game, depth=depth)
+        else:
+            return self.minimizer(game=game, depth=depth, ghost_id=agent_id)
 
-        minimax = minimax(self, game=gameState, pacman=True, depth=self.depth)
-        print(f"minimax {minimax}")
+    def maximizer(self, game, depth: int):
+        """Maximizer for pacman"""
+        # Start with worst value
+        value_and_action = [float("-inf"), None]
 
-        # pacman
-        legal_actions = gameState.getLegalActions(0)
-        # return legal_actions[50]
-        return legal_actions[random_x_index(minimax, max)]
+        # Go through legal actions
+        legal_actions = game.getLegalActions(0)
+        for action in legal_actions:
+            next_game = game.generateSuccessor(0, action)
+            # Get the value of next game recursively
+            next_value = self.minimax(game=next_game, depth=depth + 1)[0]
+
+            # Update if better
+            if next_value > value_and_action[0]:
+                value_and_action = [next_value, action]
+
+        return value_and_action
+
+    def minimizer(self, game, depth: int, ghost_id: int):
+        """Minimizer for ghosts"""
+        value_and_action = [float("inf"), None]
+
+        # Go through legal actions
+        legal_actions = game.getLegalActions(ghost_id)
+        for action in legal_actions:
+            next_game = game.generateSuccessor(ghost_id, action)
+            # Get the value of next game
+            next_value = self.minimax(game=next_game, depth=depth + 1)[0]
+
+            # Update if worse
+            if next_value < value_and_action[0]:
+                value_and_action = [next_value, action]
+
+        return value_and_action
 
 
 class AlphaBetaAgent(MultiAgentSearchAgent):
@@ -241,7 +209,86 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
         Returns the minimax action using self.depth and self.evaluationFunction
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        value_and_action = self.alpha_beta(
+            game=gameState, depth=0, alpha=float("-inf"), beta=float("inf")
+        )
+        # print(f"alphaBeta {value_and_action}")
+        return value_and_action[1]
+
+    def alpha_beta(self, game, depth: int, alpha: int, beta: int):
+        """Main alpha-beta pruning search function, returns value and action"""
+        # Using depth to iterate through all agents. Each actual depth is // num_agents
+        number_of_agents = game.getNumAgents()
+        terminal_state = depth == self.depth * number_of_agents
+
+        # Returns on terminated game to avoid asking for games without legal moves
+        if game.isLose() or game.isWin() or terminal_state:
+            return [self.evaluationFunction(game), None]
+
+        # Get agent id based on depth
+        agent_id = depth % number_of_agents
+        if agent_id == 0:
+            # Pacman is 0
+            return self.maximizer(game=game, depth=depth, alpha=alpha, beta=beta)
+        else:
+            return self.minimizer(
+                game=game, depth=depth, ghost_id=agent_id, alpha=alpha, beta=beta
+            )
+
+    def maximizer(self, game, depth: int, alpha: int, beta: int):
+        """Maximizer for pacman"""
+        # Start with worst value
+        value_and_action = [float("-inf"), None]
+
+        # Go through legal actions
+        legal_actions = game.getLegalActions(0)
+        # if not legal_actions:
+        #     return [self.evaluationFunction(game), None]
+        for action in legal_actions:
+            next_game = game.generateSuccessor(0, action)
+
+            next_value = self.alpha_beta(
+                game=next_game, depth=depth + 1, alpha=alpha, beta=beta
+            )[0]
+
+            # Update if better
+            if next_value > value_and_action[0]:
+                value_and_action = [next_value, action]
+                # Update alpha
+                alpha = max(value_and_action[0], alpha)
+
+            # Prune
+            if value_and_action[0] > beta:
+                return value_and_action
+
+        return value_and_action
+
+    def minimizer(self, game, depth: int, ghost_id: int, alpha: int, beta: int):
+        """Minimizer for ghosts"""
+        value_and_action = [float("inf"), None]
+
+        # Go through legal actions
+        legal_actions = game.getLegalActions(ghost_id)
+        # if not legal_actions:
+        #     return [self.evaluationFunction(game), None]
+        for action in legal_actions:
+            next_game = game.generateSuccessor(ghost_id, action)
+
+            next_value = self.alpha_beta(
+                game=next_game, depth=depth + 1, alpha=alpha, beta=beta
+            )[0]
+
+            # Update if worse
+            if next_value < value_and_action[0]:
+                value_and_action = [next_value, action]
+                # Update beta
+                beta = min(value_and_action[0], beta)
+
+            # Prune
+            if value_and_action[0] < alpha:
+                return value_and_action
+
+        return value_and_action
 
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
